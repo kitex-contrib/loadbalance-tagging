@@ -26,8 +26,7 @@ import (
 	"github.com/cloudwego/kitex/pkg/loadbalance"
 )
 
-type mockBalancer struct {
-}
+type mockBalancer struct{}
 
 type mockPicker struct {
 	result discovery.Result
