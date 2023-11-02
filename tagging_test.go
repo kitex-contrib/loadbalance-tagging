@@ -26,10 +26,7 @@ import (
 	"github.com/cloudwego/kitex/pkg/loadbalance"
 )
 
-type mockBalancer struct {
-	rebalanced bool
-	deleted    bool
-}
+type mockBalancer struct{}
 
 type mockPicker struct {
 	result discovery.Result
@@ -37,14 +34,6 @@ type mockPicker struct {
 
 func (m *mockBalancer) GetPicker(result discovery.Result) loadbalance.Picker {
 	return &mockPicker{result: result}
-}
-
-func (m *mockBalancer) Rebalance(change discovery.Change) {
-	m.rebalanced = true
-}
-
-func (m *mockBalancer) Delete(change discovery.Change) {
-	m.deleted = true
 }
 
 func (m *mockPicker) Next(ctx context.Context, request interface{}) discovery.Instance {
@@ -98,6 +87,26 @@ func TestTaggingBalancer_GetPicker(t *testing.T) {
 				},
 			},
 		},
+		{
+			cacheable: true,
+			cacheKey:  "multi instances",
+			instances: []discovery.Instance{
+				discovery.NewInstance("tcp", "addr1", 10, map[string]string{"foo": "bar1"}),
+				discovery.NewInstance("tcp", "addr2", 20, map[string]string{"foo": "bar2"}),
+				discovery.NewInstance("tcp", "addr3", 30, map[string]string{"foo": "bar3"}),
+				discovery.NewInstance("tcp", "addr4", 30, map[string]string{"foo": ""}),
+				discovery.NewInstance("tcp", "addr5", 30, nil),
+			},
+			tagInstances: map[string][]discovery.Instance{
+				"bar1": {discovery.NewInstance("tcp", "addr1", 10, map[string]string{"foo": "bar1"})},
+				"bar2": {discovery.NewInstance("tcp", "addr2", 20, map[string]string{"foo": "bar2"})},
+				"bar3": {discovery.NewInstance("tcp", "addr3", 30, map[string]string{"foo": "bar3"})},
+				"": {
+					discovery.NewInstance("tcp", "addr4", 30, map[string]string{"foo": ""}),
+					discovery.NewInstance("tcp", "addr5", 30, nil),
+				},
+			},
+		},
 	}
 
 	lb := New("foo", func(ctx context.Context, request interface{}) string {
@@ -120,8 +129,8 @@ func TestTaggingBalancer_GetPicker(t *testing.T) {
 			assert.IsType(t, &mockPicker{}, p)
 
 			pp := p.(*mockPicker)
-			assert.Equal(t, tt.cacheable, pp.result.Cacheable)
-			assert.Equal(t, tt.cacheKey, pp.result.CacheKey)
+			assert.Zero(t, pp.result.Cacheable)
+			assert.Zero(t, pp.result.CacheKey)
 			assert.EqualValues(t, v, pp.result.Instances)
 		}
 	}
@@ -160,7 +169,6 @@ func TestTaggingBalancer_Rebalance(t *testing.T) {
 			Instances: []discovery.Instance{discovery.NewInstance("tcp", "addr2", 20, map[string]string{"foo": "bar"})},
 		},
 	})
-	assert.True(t, lb.(*taggingBalancer).next.(*mockBalancer).deleted)
 
 	p2 := lb.GetPicker(discovery.Result{
 		Cacheable: true,
@@ -173,13 +181,9 @@ func TestTaggingBalancer_Rebalance(t *testing.T) {
 	mp1 := p1.(*taggingPicker).tagPickers["bar"].(*mockPicker)
 	mp2 := p2.(*taggingPicker).tagPickers["bar"].(*mockPicker)
 	assert.Equal(t, mp1.result, discovery.Result{
-		Cacheable: true,
-		CacheKey:  "rebalance",
 		Instances: []discovery.Instance{discovery.NewInstance("tcp", "addr1", 10, map[string]string{"foo": "bar"})},
 	})
 	assert.Equal(t, mp2.result, discovery.Result{
-		Cacheable: true,
-		CacheKey:  "rebalance",
 		Instances: []discovery.Instance{discovery.NewInstance("tcp", "addr2", 20, map[string]string{"foo": "bar"})},
 	})
 }
@@ -205,7 +209,6 @@ func TestTaggingBalancer_Delete(t *testing.T) {
 			CacheKey:  "delete",
 		},
 	})
-	assert.True(t, lb.(*taggingBalancer).next.(*mockBalancer).deleted)
 
 	pp, ok = lb.(*taggingBalancer).pickerCache.Load("delete")
 	assert.False(t, ok)
