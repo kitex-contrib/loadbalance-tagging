@@ -65,18 +65,12 @@ func (b *taggingBalancer) Rebalance(change discovery.Change) {
 	if !change.Result.Cacheable {
 		return
 	}
-	if next, ok := b.next.(loadbalance.Rebalancer); ok {
-		next.Delete(change)
-	}
 	b.pickerCache.Store(change.Result.CacheKey, b.createPicker(change.Result))
 }
 
 func (b *taggingBalancer) Delete(change discovery.Change) {
 	if !change.Result.Cacheable {
 		return
-	}
-	if next, ok := b.next.(loadbalance.Rebalancer); ok {
-		next.Delete(change)
 	}
 	b.pickerCache.Delete(change.Result.CacheKey)
 }
@@ -93,10 +87,7 @@ func (b *taggingBalancer) createPicker(e discovery.Result) loadbalance.Picker {
 
 	pickers := make(map[string]loadbalance.Picker, len(instances))
 	for t, instances := range instances {
-		// a projection of raw discovery.Result has same cache option
 		p := b.next.GetPicker(discovery.Result{
-			Cacheable: e.Cacheable,
-			CacheKey:  e.CacheKey,
 			Instances: instances,
 		})
 		pickers[t] = p
